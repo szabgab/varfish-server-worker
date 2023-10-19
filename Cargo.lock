@@ -2328,6 +2328,10 @@ dependencies = [
  "bytes",
  "crossbeam-channel",
  "flate2",
+ "futures",
+ "pin-project-lite",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -2384,6 +2388,7 @@ dependencies = [
  "noodles-bgzf 0.25.0",
  "noodles-core",
  "noodles-csi",
+ "tokio",
 ]
 
 [[package]]
@@ -2392,6 +2397,7 @@ version = "0.41.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a0c31d3f5fd3bef22fcca702e2a85ab93f1c076a9e34cb94bc0c21874d2f4e02"
 dependencies = [
+ "futures",
  "indexmap 2.0.2",
  "memchr",
  "noodles-bgzf 0.25.0",
@@ -2399,6 +2405,7 @@ dependencies = [
  "noodles-csi",
  "noodles-tabix",
  "percent-encoding",
+ "tokio",
 ]
 
 [[package]]

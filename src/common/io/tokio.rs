@@ -1,37 +1,41 @@
 //! Tokio-based async common I/O code.
 
 use async_compression::tokio::bufread::GzipDecoder;
+use noodles_bgzf as bgzf;
 use std::path::Path;
 use std::pin::Pin;
 use tokio::fs::File;
-use tokio::io::{AsyncRead, BufReader};
+use tokio::io::{AsyncRead, AsyncWrite, BufReader, BufWriter};
 
 use crate::common::io::std::is_gz;
 
-/// Transparently open a file with gzip decoder.
+/// Transparently open a file with gzip decoder for reading.
+///
+/// Note that decoding of multi-member gzip files is automatically supported, as is needed for
+/// `bgzip`` files.
 ///
 /// # Arguments
 ///
 /// * `path` - A path to the file to open.
-///
-/// # Returns
-///
-/// A `Result` containing a `Pin<Box<dyn AsyncRead>>` that can be used to read
-/// the file, or an `anyhow::Error` if the file could not be opened.
 pub async fn open_read_maybe_gz<P>(path: P) -> Result<Pin<Box<dyn AsyncRead>>, anyhow::Error>
 where
     P: AsRef<Path>,
 {
+    let path_is_gzip = is_gz(path.as_ref());
     tracing::trace!(
-        "Opening {} as {} reading",
+        "Opening {} as {} for reading (async)",
         path.as_ref().display(),
-        "palin text"
+        if path_is_gzip {
+            "gzip (allow multi-member)"
+        } else {
+            "plain text"
+        }
     );
     let file = File::open(path.as_ref())
         .await
         .map_err(|e| anyhow::anyhow!("could not open file {}: {}", path.as_ref().display(), e))?;
 
-    if is_gz(path.as_ref()) {
+    if path_is_gzip {
         let bufreader = BufReader::new(file);
         let decoder = {
             let mut decoder = GzipDecoder::new(bufreader);
@@ -44,9 +48,42 @@ where
     }
 }
 
+/// Transparently open a file with bgzip encoder for writing.
+///
+/// Note that decoding of multi-member gzip files is automatically supported, as is needed for
+/// `bgzip`` files.
+///
+/// # Arguments
+///
+/// * `path` - A path to the file to open.
+pub async fn open_write_maybe_bgzf<P>(path: P) -> Result<Pin<Box<dyn AsyncWrite>>, anyhow::Error>
+where
+    P: AsRef<Path>,
+{
+    let path_is_gzip = is_gz(path.as_ref());
+    tracing::trace!(
+        "Opening {} as {} for writing (async)",
+        path.as_ref().display(),
+        if path_is_gzip {
+            "bgzip (block gzip)"
+        } else {
+            "plain text"
+        }
+    );
+    let file = File::create(path.as_ref())
+        .await
+        .map_err(|e| anyhow::anyhow!("could not open file {}: {}", path.as_ref().display(), e))?;
+
+    if path_is_gzip {
+        Ok(Box::pin(bgzf::r#async::writer::Writer::new(file)))
+    } else {
+        Ok(Box::pin(BufWriter::new(file)))
+    }
+}
+
 #[cfg(test)]
 mod test {
-    use tokio::io::AsyncReadExt;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     #[rstest::rstest]
     #[case("14kb.txt")]
@@ -63,6 +100,36 @@ mod test {
         reader.read_to_end(&mut buf).await?;
 
         insta::assert_snapshot!(String::from_utf8(buf)?);
+
+        Ok(())
+    }
+
+    #[rstest::rstest]
+    #[case("14kb.txt")]
+    #[case("14kb.txt.gz")]
+    #[case("14kb.txt.bgz")]
+    #[tokio::test]
+    async fn open_write_maybe_bgzf(#[case] filename: &str) -> Result<(), anyhow::Error> {
+        mehari::common::set_snapshot_suffix!("{}", filename);
+        // Note that the 14kb.txt file contains about 14 KB of data so bgz will have multiple 4KB
+        // blocks.
+
+        let tmp_dir = temp_testdir::TempDir::default();
+        let tmp_file_path = tmp_dir.join(filename);
+
+        {
+            let mut writer = super::open_write_maybe_bgzf(&tmp_file_path).await?;
+            for i in 1..3000 {
+                writer.write_all(format!("{}\n", i).as_bytes()).await?;
+            }
+
+            writer.flush().await?;
+            writer.shutdown().await?;
+        }
+
+        let mut buffer: Vec<u8> = Vec::new();
+        hxdmp::hexdump(&crate::common::read_to_bytes(&tmp_file_path)?, &mut buffer)?;
+        insta::assert_snapshot!(String::from_utf8_lossy(&buffer));
 
         Ok(())
     }

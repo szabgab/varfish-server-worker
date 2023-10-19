@@ -4,7 +4,7 @@ use std::sync::{Arc, OnceLock};
 
 use crate::common::{
     self,
-    io::std::{open_read_maybe_gz, open_write_maybe_gz},
+    io::std::{open_read_maybe_gz, open_write_maybe_bgzf},
     worker_version, GenomeRelease,
 };
 use mehari::annotate::seqvars::provider::MehariProvider;
@@ -526,7 +526,7 @@ pub fn run(args_common: &crate::common::Args, args: &Args) -> Result<(), anyhow:
     )
     .map_err(|e| anyhow::anyhow!("problem building output header: {}", e))?;
 
-    let mut output_writer = { vcf::writer::Writer::new(open_write_maybe_gz(&args.path_out)?) };
+    let mut output_writer = { vcf::writer::Writer::new(open_write_maybe_bgzf(&args.path_out)?) };
     output_writer
         .write_header(&output_header)
         .map_err(|e| anyhow::anyhow!("problem writing header: {}", e))?;

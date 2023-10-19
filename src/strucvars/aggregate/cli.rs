@@ -19,7 +19,7 @@ use crate::{
     common::{
         build_chrom_map,
         io::std::read_lines,
-        io::std::{open_read_maybe_gz, open_write_maybe_gz},
+        io::std::{open_read_maybe_gz, open_write_maybe_bgzf},
         trace_rss_now, GenomeRelease, CHROMS,
     },
     strucvars::query::schema::SvType,
@@ -231,7 +231,7 @@ fn merge_split_files(
     let mut writer = csv::WriterBuilder::new()
         .delimiter(b'\t')
         .has_headers(false)
-        .from_writer(open_write_maybe_gz(path_output_tsv).map_err(|e| {
+        .from_writer(open_write_maybe_bgzf(path_output_tsv).map_err(|e| {
             anyhow::anyhow!("Cannot open {:?} for writing: {:?}", &path_output_tsv, e)
         })?);
 
